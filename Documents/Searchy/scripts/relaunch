@@ -1,0 +1,8 @@
+#!/bin/bash
+# Dev helper: rebuild the Debug app and relaunch it with the debug bridge enabled.
+cd "$(dirname "$0")/.."
+xcodegen generate >/dev/null 2>&1
+xcodebuild -project Searchy.xcodeproj -scheme Searchy -configuration Debug build 2>&1 | grep -E "error:|BUILD (SUCCEEDED|FAILED)" | sed 's#'"$PWD"'/##' | sort -u
+APP=$(ls -dt "$HOME"/Library/Developer/Xcode/DerivedData/Searchy-*/Build/Products/Debug/Searchy.app | head -1)
+scripts/run-main "$APP"
+sleep ${1:-4}

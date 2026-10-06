@@ -1,0 +1,15 @@
+#!/bin/bash
+# Dev helper: build the Bench configuration, relaunch it fresh, and run the standard memory scenario.
+cd "$(dirname "$0")/.."
+DD="$HOME/Library/Caches/Searchy/bench-dd"
+xcodebuild -project Searchy.xcodeproj -scheme Searchy -configuration Bench -derivedDataPath "$DD" build 2>&1 | grep -E "error:|BUILD (FAILED)" | sort -u
+rm -f "$HOME/Library/Application Support/Searchy/Session.json"
+scripts/run-main "$DD/Build/Products/Bench/Searchy.app"
+sleep 5
+scripts/memcheck "1. just launched"
+scripts/dbg '{"cmd":"navigate","text":"example.org"}' >/dev/null
+for u in https://news.ycombinator.com https://en.wikipedia.org/wiki/WebKit https://github.com; do scripts/dbg "{\"cmd\":\"open\",\"url\":\"$u\",\"newTab\":true}" >/dev/null; done
+scripts/dbg '{"cmd":"wait","seconds":9}' 40 >/dev/null
+scripts/memcheck "2. four tabs loaded"
+scripts/dbg '{"cmd":"sleepOthers"}' >/dev/null; sleep 4
+scripts/memcheck "3. background tabs asleep"

@@ -1,0 +1,22 @@
+#!/bin/bash
+# Dev helper: memory report for the running Bench build — the app process plus the WebKit helpers it spawned.
+# usage: scripts/memcheck [label]
+PID=${SEARCHY_PID:-$(cat "$HOME/Library/Caches/Searchy/main.pid" 2>/dev/null)}; [ -z "$PID" ] && { echo "no instance (set SEARCHY_PID or use scripts/run-main)"; exit 1; }
+mb() { awk '{printf "%.1f", $1/1048576}'; }
+foot() { footprint -p "$1" 2>/dev/null | awk '/phys_footprint:/ {v=$2; u=$3; if (u ~ /GB/) v*=1024; else if (u ~ /KB/) v/=1024; else if (u ~ /B$/ && u !~ /MB|GB|KB/) v/=1048576; printf "%.1f", v; exit}'; }
+APP=$(foot $PID)
+echo "== ${1:-memory}"
+echo "Searchy app:           ${APP} MB   (pid $PID)"
+TOTAL=$APP; N=0
+# WebKit helpers started after the app (same user), attributed by start time.
+APP_START=$(ps -o lstart= -p $PID | xargs -I{} date -j -f "%a %b %e %T %Y" "{}" +%s 2>/dev/null)
+while read -r hp comm; do
+  case "$comm" in *WebKit.WebContent*|*WebKit.Networking*|*WebKit.GPU*) ;; *) continue;; esac
+  HS=$(ps -o lstart= -p $hp | xargs -I{} date -j -f "%a %b %e %T %Y" "{}" +%s 2>/dev/null)
+  [ -n "$APP_START" ] && [ -n "$HS" ] && [ "$HS" -lt "$APP_START" ] && continue
+  F=$(foot $hp); [ -z "$F" ] && continue
+  NAME=$(basename "$comm" | sed 's/com.apple.WebKit.//')
+  printf "  %-22s %8s MB   (pid %s)\n" "$NAME" "$F" "$hp"
+  TOTAL=$(echo "$TOTAL $F" | awk '{printf "%.1f", $1+$2}'); N=$((N+1))
+done < <(ps -axo pid=,comm= | awk '{print $1, $2}')
+echo "TOTAL (app + $N helpers): ${TOTAL} MB"

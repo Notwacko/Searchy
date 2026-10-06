@@ -1,0 +1,77 @@
+#!/bin/bash
+# Regression script for the headline features. Needs a running (headless) instance: scripts/run-main <app>.
+# Prints PASS/FAIL per check. Uses only local test servers plus example.org / wikipedia for real pages.
+cd "$(dirname "$0")/.."
+PASS=0; FAIL=0
+ok()   { echo "  PASS  $1"; PASS=$((PASS+1)); }
+bad()  { echo "  FAIL  $1  ($2)"; FAIL=$((FAIL+1)); }
+chk()  { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1" "got '$2', want '$3'"; fi; }
+j()    { python3 -c "import json,sys; d=json.load(sys.stdin); print($1)" 2>/dev/null; }
+D() { scripts/dbg "$1" ${2:-40}; }
+
+T=$(mktemp -d)
+cat > $T/srv.py <<'PY'
+import http.server, sys
+class H(http.server.BaseHTTPRequestHandler):
+    def log_message(self,*a): pass
+    def do_GET(self):
+        self.send_response(200); self.send_header('Content-Type','text/html')
+        if self.path.startswith('/set'): self.send_header('Set-Cookie','sid=abc123; Path=/')
+        self.end_headers()
+        self.wfile.write(b'<html><head><title>T</title></head><body><h1 id=big>Big heading</h1><p id=keep>kept</p></body></html>')
+http.server.HTTPServer(('127.0.0.1',int(sys.argv[1])),H).serve_forever()
+PY
+PORT=$(python3 -c "import socket; s=socket.socket(); s.bind(('127.0.0.1',0)); print(s.getsockname()[1]); s.close()")
+python3 $T/srv.py $PORT & SRV=$!; sleep 1
+U="http://127.0.0.1:$PORT"
+
+echo "Pinned tabs & sleep"
+D '{"cmd":"open","url":"'$U'/a"}' >/dev/null; D '{"cmd":"wait","seconds":1.5}' >/dev/null
+D '{"cmd":"pin"}' >/dev/null
+chk "tab becomes pinned" "$(D '{"cmd":"state"}' | j "d['selected']['pinned']")" "True"
+D '{"cmd":"closeSelected"}' >/dev/null     # ⌘W on a pinned tab
+S=$(D '{"cmd":"state"}')
+chk "⌘W on a pinned tab keeps it (asleep)" "$(echo "$S" | j "[t for t in d['tabs'] if t['pinned']][0]['sleeping']")" "True"
+chk "pinned tab still listed" "$(echo "$S" | j "len([t for t in d['tabs'] if t['pinned']])")" "1"
+
+echo "Spaces & sign-in isolation"
+D '{"cmd":"open","url":"'$U'/set","newTab":true}' >/dev/null; D '{"cmd":"wait","seconds":1.5}' >/dev/null
+chk "cookie set in the shared space" "$(D '{"cmd":"eval","js":"document.cookie"}' | j "d['value']")" "sid=abc123"
+D '{"cmd":"addSpace","name":"Fresh","isolated":true}' >/dev/null
+D '{"cmd":"open","url":"'$U'/nocookie"}' >/dev/null; D '{"cmd":"wait","seconds":1.5}' >/dev/null
+chk "isolated space starts afresh (no cookie)" "$(D '{"cmd":"eval","js":"document.cookie"}' | j "repr(d['value'])")" "''"
+D '{"cmd":"space","n":1}' >/dev/null; D '{"cmd":"wait","seconds":1}' >/dev/null
+
+echo "Private tabs"
+D '{"cmd":"privateTab","url":"'$U'/priv"}' >/dev/null; D '{"cmd":"wait","seconds":1.5}' >/dev/null
+chk "private tab has its own (empty) cookies" "$(D '{"cmd":"eval","js":"document.cookie"}' | j "repr(d['value'])")" "''"
+chk "tab is flagged private" "$(D '{"cmd":"state"}' | j "d['selected']['private']")" "True"
+D '{"cmd":"closeSelected"}' >/dev/null
+
+echo "Hide anything (persists per site)"
+D '{"cmd":"open","url":"'$U'/hide"}' >/dev/null; D '{"cmd":"wait","seconds":1.5}' >/dev/null
+chk "heading visible before" "$(D '{"cmd":"eval","js":"getComputedStyle(document.getElementById(\"big\")).display"}' | j "d['value']")" "block"
+D '{"cmd":"evalIsolated","js":"window.webkit.messageHandlers.searchy.postMessage({t:\"hide\",selector:\"#big\",host:location.hostname}); 1"}' >/dev/null
+sleep 2.5
+D '{"cmd":"open","url":"'$U'/hide2"}' >/dev/null; D '{"cmd":"wait","seconds":1.5}' >/dev/null
+chk "heading hidden after reload (network-layer rule)" "$(D '{"cmd":"eval","js":"getComputedStyle(document.getElementById(\"big\")).display"}' | j "d['value']")" "none"
+chk "other content still shown" "$(D '{"cmd":"eval","js":"getComputedStyle(document.getElementById(\"keep\")).display"}' | j "d['value']")" "block"
+
+echo "Reading mode"
+D '{"cmd":"open","url":"https://en.wikipedia.org/wiki/WebKit"}' >/dev/null; D '{"cmd":"wait","seconds":5}' >/dev/null
+chk "article detected as readable" "$(D '{"cmd":"state"}' | j "d['selected']['readable']")" "True"
+D '{"cmd":"reader"}' >/dev/null; sleep 1.5
+chk "reading mode overlay is active" "$(D '{"cmd":"evalIsolated","js":"window.__searchy.reader.isActive()"}' | j "d['value']")" "1"
+D '{"cmd":"reader"}' >/dev/null; sleep 1
+chk "reading mode closes cleanly" "$(D '{"cmd":"evalIsolated","js":"window.__searchy.reader.isActive()"}' | j "d['value']")" "0"
+
+echo "Floating video / inspector support"
+chk "PiP API present in WebKit" "$(D '{"cmd":"eval","js":"typeof HTMLVideoElement.prototype.webkitSetPresentationMode"}' | j "d['value']")" "function"
+chk "page is inspectable (Inspect Element / console)" "$(D '{"cmd":"eval","js":"1"}' | j "d.get('value')")" "1"
+
+echo "Wake after sleep keeps place"
+D '{"cmd":"selectIndex","n":1}' >/dev/null; D '{"cmd":"wait","seconds":2}' >/dev/null
+chk "pinned tab wakes on click" "$(D '{"cmd":"state"}' | j "d['selected']['sleeping']")" "False"
+
+kill $SRV 2>/dev/null
+echo; echo "RESULT: $PASS passed, $FAIL failed"; [ $FAIL -eq 0 ]

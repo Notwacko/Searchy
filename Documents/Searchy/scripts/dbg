@@ -1,0 +1,11 @@
+#!/bin/bash
+# Dev helper: send a command to a running debug/bench build (launched with SEARCHY_DEBUG=1) and print the result.
+# usage: scripts/dbg '{"cmd":"state"}' [polls]      (honors SEARCHY_HOME for isolated instances)
+if [ -n "$SEARCHY_HOME" ]; then D="$SEARCHY_HOME/Caches/debug"; else D="$HOME/Library/Caches/Searchy/debug"; fi
+mkdir -p "$D"; rm -f "$D/result.json"
+echo "$1" > "$D/command.json.tmp" && mv "$D/command.json.tmp" "$D/command.json"
+for i in $(seq 1 ${2:-40}); do
+  [ -f "$D/result.json" ] && { cat "$D/result.json"; exit 0; }
+  sleep 0.25
+done
+echo '{"error":"timeout"}'; exit 1

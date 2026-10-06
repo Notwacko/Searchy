@@ -1,0 +1,17 @@
+#!/bin/bash
+# Dev helper: create an isolated copy of the project for a parallel worker.
+# usage: scripts/fork-workspace <name>   → ~/Library/Caches/Searchy/agents/<name>/{base,repo,dd,home}
+set -e
+SRC="$(cd "$(dirname "$0")/.." && pwd)"
+W="$HOME/Library/Caches/Searchy/agents/$1"
+BASE="$HOME/Library/Caches/Searchy/agents/_base"
+mkdir -p "$W"
+if [ ! -d "$BASE" ] || [ -n "$REFRESH_BASE" ]; then
+  rm -rf "$BASE"; mkdir -p "$BASE"
+  rsync -a --exclude build --exclude '*.xcodeproj' --exclude .DS_Store "$SRC/" "$BASE/"
+fi
+rm -rf "$W/base" "$W/repo"
+cp -R "$BASE" "$W/base"
+cp -R "$BASE" "$W/repo"
+mkdir -p "$W/dd" "$W/home"
+echo "$W"

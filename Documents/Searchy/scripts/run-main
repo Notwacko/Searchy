@@ -1,0 +1,10 @@
+#!/bin/bash
+# Dev helper: (re)start the lead developer's own instance, invisible, tracked by a pid file.
+# usage: scripts/run-main <path/to/Searchy.app>      stop: scripts/run-main stop
+PIDFILE="$HOME/Library/Caches/Searchy/main.pid"
+if [ -f "$PIDFILE" ]; then kill "$(cat "$PIDFILE")" 2>/dev/null; rm -f "$PIDFILE"; sleep 1; fi
+[ "$1" = "stop" ] && exit 0
+mkdir -p "$HOME/Library/Caches/Searchy"
+if [ "$SEARCHY_VISIBLE" = "1" ]; then HL=0; else HL=1; fi
+SEARCHY_DEBUG=1 SEARCHY_HEADLESS=$HL "$1/Contents/MacOS/Searchy" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &
+echo $! > "$PIDFILE"

@@ -1,0 +1,118 @@
+name: Searchy
+options:
+  bundleIdPrefix: app.searchy
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+  deploymentTarget:
+    macOS: "26.0"
+configs:
+  Debug: debug
+  Release: release
+  Bench: release
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
+    SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+    SWIFT_APPROACHABLE_CONCURRENCY: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+    ENABLE_HARDENED_RUNTIME: NO
+    GENERATE_INFOPLIST_FILE: NO
+  configs:
+    Release:
+      SWIFT_OPTIMIZATION_LEVEL: "-O"
+      SWIFT_COMPILATION_MODE: wholemodule
+      DEAD_CODE_STRIPPING: YES
+      STRIP_INSTALLED_PRODUCT: YES
+      DEPLOYMENT_POSTPROCESSING: YES
+    Bench:
+      SWIFT_OPTIMIZATION_LEVEL: "-O"
+      SWIFT_COMPILATION_MODE: wholemodule
+      DEAD_CODE_STRIPPING: YES
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) SEARCHY_BRIDGE"
+targets:
+  Searchy:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+      - path: Resources
+        buildPhase: resources
+    entitlements:
+      path: Config/Searchy.entitlements
+      properties:
+        com.apple.security.device.camera: true
+        com.apple.security.device.audio-input: true
+        com.apple.security.personal-information.location: true
+    info:
+      path: Config/Info.plist
+      properties:
+        CFBundleName: Searchy
+        CFBundleDisplayName: Searchy
+        CFBundleExecutable: Searchy
+        CFBundleIdentifier: app.searchy.Searchy
+        CFBundlePackageType: APPL
+        CFBundleShortVersionString: "1.0.0"
+        CFBundleVersion: "1"
+        LSMinimumSystemVersion: "26.0"
+        LSApplicationCategoryType: public.app-category.productivity
+        NSPrincipalClass: NSApplication
+        NSHighResolutionCapable: true
+        NSSupportsAutomaticTermination: false
+        NSSupportsSuddenTermination: false
+        NSHumanReadableCopyright: "Searchy is open source (MIT)."
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        NSCameraUsageDescription: "Websites you allow can use your camera."
+        NSMicrophoneUsageDescription: "Websites you allow can use your microphone."
+        NSLocationWhenInUseUsageDescription: "Websites you allow can use your location."
+        NSLocationUsageDescription: "Websites you allow can use your location."
+        CFBundleURLTypes:
+          - CFBundleURLName: Web site URL
+            CFBundleURLSchemes: [http, https]
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: HTML document
+            CFBundleTypeRole: Viewer
+            LSItemContentTypes: [public.html, public.xhtml]
+          - CFBundleTypeName: Web location
+            CFBundleTypeRole: Viewer
+            LSItemContentTypes: [com.apple.web-internet-location]
+    settings:
+      base:
+        PRODUCT_NAME: Searchy
+        PRODUCT_BUNDLE_IDENTIFIER: app.searchy.Searchy
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        COMBINE_HIDPI_IMAGES: YES
+        ENABLE_PREVIEWS: NO
+  SearchyTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: Searchy
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.searchy.SearchyTests
+        SWIFT_DEFAULT_ACTOR_ISOLATION: nonisolated
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Searchy.app/Contents/MacOS/Searchy"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+schemes:
+  Searchy:
+    build:
+      targets:
+        Searchy: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets: [SearchyTests]
+      environmentVariables:
+        SEARCHY_HEADLESS: "1"
+        SEARCHY_HOME: "$(TEMP_DIR)/searchy-test-home"
+    profile:
+      config: Release
